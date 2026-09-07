@@ -1,0 +1,54 @@
+name: SecretSentry
+description: Scan a repository for accidentally committed secrets.
+author: Pavankumar
+branding:
+  icon: shield
+  color: purple
+inputs:
+  path:
+    description: File or directory to scan.
+    required: false
+    default: "."
+  format:
+    description: Output format: text, json, or sarif.
+    required: false
+    default: "text"
+  max-size:
+    description: Maximum file size in bytes.
+    required: false
+    default: "1000000"
+  no-fail:
+    description: Do not fail the workflow when findings exist.
+    required: false
+    default: "false"
+outputs:
+  findings:
+    description: Number of unsuppressed findings.
+    value: ${{ steps.scan.outputs.findings }}
+runs:
+  using: composite
+  steps:
+    - id: scan
+      shell: bash
+      env:
+        INPUT_PATH: ${{ inputs.path }}
+        INPUT_FORMAT: ${{ inputs.format }}
+        INPUT_MAX_SIZE: ${{ inputs.max-size }}
+        INPUT_NO_FAIL: ${{ inputs.no-fail }}
+      run: |
+        set -euo pipefail
+        export PYTHONPATH="$GITHUB_ACTION_PATH/src${PYTHONPATH:+:$PYTHONPATH}"
+        args=("$INPUT_PATH" "--format" "$INPUT_FORMAT" "--max-size" "$INPUT_MAX_SIZE")
+        if [[ "$INPUT_NO_FAIL" == "true" ]]; then args+=("--no-fail"); fi
+        if [[ "$INPUT_FORMAT" == "json" ]]; then
+          python "$GITHUB_ACTION_PATH/src/secretsentry.py" "${args[@]}" > "$RUNNER_TEMP/secretsentry.json"
+          cat "$RUNNER_TEMP/secretsentry.json"
+          count="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["summary"]["findings"])' "$RUNNER_TEMP/secretsentry.json")"
+        else
+          python "$GITHUB_ACTION_PATH/src/secretsentry.py" "${args[@]}" || status=$?
+          status=${status:-0}
+          python "$GITHUB_ACTION_PATH/src/secretsentry.py" "$INPUT_PATH" --format json --max-size "$INPUT_MAX_SIZE" --no-fail > "$RUNNER_TEMP/secretsentry.json"
+          count="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["summary"]["findings"])' "$RUNNER_TEMP/secretsentry.json")"
+          if [[ "$status" -ne 0 && "$INPUT_NO_FAIL" != "true" ]]; then exit "$status"; fi
+        fi
+        echo "findings=$count" >> "$GITHUB_OUTPUT"
