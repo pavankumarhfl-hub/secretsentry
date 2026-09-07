@@ -1,6 +1,8 @@
-# Contributing
+# Contributing to SecretSentry
 
 Thanks for helping improve SecretSentry.
+
+**Maintainer:** Pavan Kumar BN
 
 ## Development
 
@@ -11,6 +13,17 @@ Thanks for helping improve SecretSentry.
 5. Keep runtime dependencies in the standard library unless there is a strong reason otherwise.
 6. Never commit real credentials to reproduce a test. Use obviously fake fixtures.
 
+## Security-first rules
+
+- Never print, store, or upload full matched secret values.
+- Keep findings deterministic and explainable.
+- Document false-positive trade-offs for new rules.
+- Prefer provider-specific rules when confidence is higher than generic patterns.
+
 ## Pull requests
 
 Explain the problem, the detection behavior changed, false-positive considerations, and how the change was tested. Keep changes focused and avoid unrelated formatting churn.
+
+## Attribution
+
+Project maintainer and original author: **Pavan Kumar BN**.
