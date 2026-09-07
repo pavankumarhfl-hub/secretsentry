@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 DEFAULT_MAX_SIZE = 1_000_000
 DEFAULT_IGNORES = {".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules", "__pycache__", ".pytest_cache", ".mypy_cache", ".tox", "dist", "build", ".next", ".nuxt", "coverage", "vendor"}
 
