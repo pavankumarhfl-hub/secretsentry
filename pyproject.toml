@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "secretsentry"
+version = "0.1.0"
+description = "Privacy-first secret detection for source trees and CI"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Pavankumar"}]
+
+[project.scripts]
+secretsentry = "secretsentry:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+py-modules = ["secretsentry"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
