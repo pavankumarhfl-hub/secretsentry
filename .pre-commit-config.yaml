@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: secretsentry
+        name: SecretSentry
+        entry: python -m secretsentry . --format text
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
