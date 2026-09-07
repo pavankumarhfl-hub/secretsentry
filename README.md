@@ -1,18 +1,22 @@
-# SecretSentry
+# SecretSentry 🛡️
 
 **Privacy-first secret detection for source trees and CI.**
 
-SecretSentry finds credential-like material before it becomes a security incident—without printing the secret itself.
+SecretSentry finds credential-like material before it becomes a security incident — without printing the secret itself.
+
+**Maintainer:** Pavan Kumar BN
 
 [![CI](https://github.com/pavankumarhfl-hub/secretsentry/actions/workflows/ci.yml/badge.svg)](https://github.com/pavankumarhfl-hub/secretsentry/actions/workflows/ci.yml)
 
 ## Why SecretSentry?
 
-Secret scanners often create a bad trade-off: noisy false positives or dangerous output that exposes the very credential being investigated. SecretSentry is designed around three principles:
+Secret scanners need to balance detection quality, false positives, and the risk of exposing credentials in their own output. SecretSentry is designed around safe-by-default scanning:
 
-- **Never echo matched secret values.** Findings contain only a short redaction.
-- **Fail safely in automation.** A finding returns a non-zero exit code by default.
-- **Stay dependency-free at runtime.** The scanner uses Python's standard library.
+- **Never echo matched secret values.** Findings expose only redacted context.
+- **Fail safely in automation.** Findings return a non-zero exit code by default.
+- **Dependency-free runtime.** The scanner uses Python's standard library.
+- **Automation-ready.** JSON and SARIF support CI and code-scanning workflows.
+- **Review-friendly.** Baselines suppress reviewed findings without storing secret values.
 
 ## Detects
 
@@ -23,23 +27,12 @@ Secret scanners often create a bad trade-off: noisy false positives or dangerous
 - PEM private-key headers
 - Generic API key / password / token / secret assignments
 
-The detection engine is deliberately conservative and should be treated as a high-signal guardrail, not proof that a repository is secret-free.
+The engine is intentionally conservative: it is a high-signal guardrail, not proof that a repository is secret-free.
 
-## Install
+## Install and use
 
 ```bash
 python -m pip install .
-```
-
-Or run directly from a checkout:
-
-```bash
-PYTHONPATH=src python src/secretsentry.py .
-```
-
-## Usage
-
-```bash
 secretsentry .
 secretsentry . --format json
 secretsentry . --format sarif
@@ -49,25 +42,25 @@ secretsentry . --max-size 500000
 
 Exit codes:
 
-- `0` — no unsuppressed findings (or `--no-fail`)
+- `0` — no unsuppressed findings, or `--no-fail`
 - `1` — one or more findings
 - `2` — invalid CLI/path usage
 
-### Baselines
+## Baselines
 
-Existing, reviewed findings can be suppressed with a small JSON baseline containing fingerprints:
+Reviewed findings can be suppressed with fingerprints:
 
 ```json
 {"fingerprints": ["0123456789abcdef"]}
 ```
 
-Then:
+Then run:
 
 ```bash
 secretsentry . --baseline .secretsentry-baseline.json
 ```
 
-Baselines suppress fingerprints; they do not store secret values.
+A baseline stores fingerprints, not secret values.
 
 ## GitHub Action
 
@@ -88,35 +81,27 @@ jobs:
           format: sarif
 ```
 
-For a security gate, keep the default failing behavior. For an informational scan, use `no-fail: true`.
+Keep the default failing behavior for a security gate; use `no-fail: true` for informational scans.
 
 ## Architecture
 
 ```text
 Repository
-    │
-    ▼
-File walker ── ignores generated/vendor/binary/large files
-    │
-    ▼
-Detection rules
-    │
-    ├── Provider-specific patterns
-    └── Generic credential assignments
-    │
-    ▼
-Findings ── path / line / rule / severity / redaction / fingerprint
-    │
-    ├── Text
-    ├── JSON
-    └── SARIF
+    ↓
+Safe file walker → exclusions / binary checks / size cap
+    ↓
+Detection engine → provider rules + generic rules
+    ↓
+Findings → redaction + fingerprint + severity
+    ↓
+Text / JSON / SARIF
 ```
 
 ## Security model
 
-SecretSentry intentionally does **not** print full matches. It skips common generated/vendor directories, ignores binary and invalid UTF-8 content, and caps scanned file size. A scanner cannot guarantee absence of secrets; use it alongside secret rotation, least privilege, repository controls and provider-side detection.
+SecretSentry does not print full matches. It skips common generated/vendor directories, ignores binary and invalid UTF-8 content, and caps scanned file size. Use it alongside credential rotation, least privilege, repository controls, and provider-side detection.
 
-See [`SECURITY.md`](SECURITY.md) for reporting guidance.
+See `SECURITY.md` for reporting guidance.
 
 ## Development
 
@@ -125,21 +110,11 @@ python -m pip install pytest
 python -m pytest -q
 ```
 
-CI tests Python 3.10, 3.11 and 3.12, builds the package, installs the CLI, and performs a smoke scan.
+CI covers Python 3.10, 3.11 and 3.12, package installation, CLI smoke tests, and Action validation.
 
 ## Roadmap
 
-### v0.1 — foundation
-
-- [x] Provider and generic detection
-- [x] Safe redaction
-- [x] JSON and SARIF
-- [x] Baseline suppression
-- [x] GitHub Action
-- [x] Multi-version CI
-
-### v0.2 — deeper repository intelligence
-
+### v0.2 — deeper detection
 - [ ] Git-history scanning with explicit opt-in
 - [ ] Configurable rules and severity policy
 - [ ] Higher-confidence entropy detection
@@ -147,7 +122,6 @@ CI tests Python 3.10, 3.11 and 3.12, builds the package, installs the CLI, and p
 - [ ] Performance benchmark suite
 
 ### v0.3 — team workflow
-
 - [ ] Baseline management commands
 - [ ] Finding deduplication across revisions
 - [ ] PR-focused diff scanning
@@ -155,4 +129,4 @@ CI tests Python 3.10, 3.11 and 3.12, builds the package, installs the CLI, and p
 
 ## License
 
-MIT
+MIT — Copyright (c) 2026 Pavan Kumar BN
