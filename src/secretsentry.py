@@ -11,11 +11,7 @@ from typing import Iterable
 
 VERSION = "0.1.0"
 DEFAULT_MAX_SIZE = 1_000_000
-DEFAULT_IGNORES = {
-    ".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules",
-    "__pycache__", ".pytest_cache", ".mypy_cache", ".tox", "dist", "build",
-    ".next", ".nuxt", "coverage", "vendor",
-}
+DEFAULT_IGNORES = {".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules", "__pycache__", ".pytest_cache", ".mypy_cache", ".tox", "dist", "build", ".next", ".nuxt", "coverage", "vendor"}
 
 @dataclass(frozen=True)
 class Rule:
@@ -54,9 +50,7 @@ def iter_files(root: Path, ignores: set[str], max_size: int) -> Iterable[Path]:
         yield root
         return
     for path in root.rglob("*"):
-        if not path.is_file():
-            continue
-        if any(part in ignores for part in path.parts):
+        if not path.is_file() or any(part in ignores for part in path.parts):
             continue
         try:
             if path.stat().st_size > max_size:
@@ -77,20 +71,16 @@ def is_text(data: bytes) -> bool:
 
 
 def redact(value: str) -> str:
-    if len(value) <= 8:
-        return "[REDACTED]"
-    return value[:4] + "…" + value[-4:]
+    return "[REDACTED]" if len(value) <= 8 else value[:4] + "…" + value[-4:]
 
 
 def fingerprint(rule_id: str, path: str, line: int, value: str) -> str:
-    raw = f"{rule_id}\0{path}\0{line}\0{value}".encode()
-    return hashlib.sha256(raw).hexdigest()[:16]
+    return hashlib.sha256(f"{rule_id}\0{path}\0{line}\0{value}".encode()).hexdigest()[:16]
 
 
 def scan(root: Path, ignores: set[str] | None = None, max_size: int = DEFAULT_MAX_SIZE) -> list[Finding]:
     ignores = DEFAULT_IGNORES | (ignores or set())
     found: list[Finding] = []
-    compiled = rules()
     for path in iter_files(root, ignores, max_size):
         try:
             data = path.read_bytes()
@@ -101,22 +91,10 @@ def scan(root: Path, ignores: set[str] | None = None, max_size: int = DEFAULT_MA
         text = data.decode("utf-8")
         display_path = str(path if root.is_file() else path.relative_to(root))
         for line_no, line in enumerate(text.splitlines(), 1):
-            for rule in compiled:
+            for rule in rules():
                 for match in rule.pattern.finditer(line):
-                    value = match.group(0)
-                    if rule.id == "generic.secret-assignment" and match.lastindex:
-                        value = match.group(1)
-                    found.append(Finding(
-                        rule_id=rule.id,
-                        rule_name=rule.name,
-                        severity=rule.severity,
-                        path=display_path,
-                        line=line_no,
-                        column=match.start() + 1,
-                        fingerprint=fingerprint(rule.id, display_path, line_no, value),
-                        redacted=redact(value),
-                        description=rule.description,
-                    ))
+                    value = match.group(1) if rule.id == "generic.secret-assignment" and match.lastindex else match.group(0)
+                    found.append(Finding(rule.id, rule.name, rule.severity, display_path, line_no, match.start() + 1, fingerprint(rule.id, display_path, line_no, value), redact(value), rule.description))
     return found
 
 
@@ -124,8 +102,7 @@ def apply_baseline(findings: list[Finding], baseline_path: Path | None) -> tuple
     if baseline_path is None or not baseline_path.exists():
         return findings, 0
     try:
-        data = json.loads(baseline_path.read_text(encoding="utf-8"))
-        ignored = set(data.get("fingerprints", []))
+        ignored = set(json.loads(baseline_path.read_text(encoding="utf-8")).get("fingerprints", []))
     except (OSError, ValueError):
         return findings, 0
     remaining = [f for f in findings if f.fingerprint not in ignored]
@@ -133,35 +110,23 @@ def apply_baseline(findings: list[Finding], baseline_path: Path | None) -> tuple
 
 
 def to_json(findings: list[Finding], root: Path, suppressed: int) -> str:
-    return json.dumps({
-        "version": VERSION,
-        "path": str(root),
-        "summary": {"findings": len(findings), "suppressed": suppressed},
-        "findings": [asdict(f) for f in findings],
-    }, indent=2)
+    return json.dumps({"version": VERSION, "path": str(root), "summary": {"findings": len(findings), "suppressed": suppressed}, "findings": [asdict(f) for f in findings]}, indent=2)
 
 
 def to_sarif(findings: list[Finding]) -> str:
-    rules_data = [{"id": f.rule_id, "name": f.rule_name, "shortDescription": {"text": f.description}} for f in rules()]
-    results = []
-    for f in findings:
-        results.append({
-            "ruleId": f.rule_id,
-            "level": "error" if f.severity in {"critical", "high"} else "warning",
-            "message": {"text": f"{f.rule_name} detected ({f.redacted})"},
-            "locations": [{"physicalLocation": {"artifactLocation": {"uri": f.path}, "region": {"startLine": f.line, "startColumn": f.column}}}],
-        })
+    rules_data = [{"id": r.id, "name": r.name, "shortDescription": {"text": r.description}} for r in rules()]
+    results = [{"ruleId": f.rule_id, "level": "error" if f.severity in {"critical", "high"} else "warning", "message": {"text": f"{f.rule_name} detected ({f.redacted})"}, "locations": [{"physicalLocation": {"artifactLocation": {"uri": f.path}, "region": {"startLine": f.line, "startColumn": f.column}}}]} for f in findings]
     return json.dumps({"version": "2.1.0", "$schema": "https://json.schemastore.org/sarif-2.1.0.json", "runs": [{"tool": {"driver": {"name": "SecretSentry", "version": VERSION, "rules": rules_data}}, "results": results}]}, indent=2)
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="SecretSentry: privacy-first secret scanner for source trees.")
-    parser.add_argument("path", nargs="?", default=".", help="File or directory to scan")
+    parser.add_argument("path", nargs="?", default=".")
     parser.add_argument("--format", choices=("text", "json", "sarif"), default="text")
-    parser.add_argument("--exclude", action="append", default=[], help="Directory/file name to exclude; repeatable")
-    parser.add_argument("--max-size", type=int, default=DEFAULT_MAX_SIZE, help="Skip files larger than this many bytes")
-    parser.add_argument("--baseline", type=Path, help="JSON baseline containing fingerprints to suppress")
-    parser.add_argument("--no-fail", action="store_true", help="Always exit successfully")
+    parser.add_argument("--exclude", action="append", default=[])
+    parser.add_argument("--max-size", type=int, default=DEFAULT_MAX_SIZE)
+    parser.add_argument("--baseline", type=Path)
+    parser.add_argument("--no-fail", action="store_true")
     parser.add_argument("--version", action="version", version=VERSION)
     args = parser.parse_args(argv)
     root = Path(args.path).resolve()
@@ -171,8 +136,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.max_size < 1:
         print("error: --max-size must be positive", file=sys.stderr)
         return 2
-    findings = scan(root, set(args.exclude), args.max_size)
-    findings, suppressed = apply_baseline(findings, args.baseline)
+    findings, suppressed = apply_baseline(scan(root, set(args.exclude), args.max_size), args.baseline)
     if args.format == "json":
         print(to_json(findings, root, suppressed))
     elif args.format == "sarif":
